@@ -1,12 +1,14 @@
 import numpy as np
 
+from lineSearchAlgorithm import lineSearch
 
-def gradientDescent(func, initial_parameters, gradient, alpha, tol, max_iter):
 
-    func_initial_value = func(initial_parameters)
-    func_values = np.array([func_initial_value])
+def gradientDescent(func, x_k, gradient, tol, max_iter=1000, alpha=1e-4):
 
-    parameters = initial_parameters
+    func_x_0 = func(x_k)
+    func_values = np.array([func_x_0])
+    alpha_values = np.array([])
+
     i = 0
 
     while i < max_iter and (
@@ -15,10 +17,13 @@ def gradientDescent(func, initial_parameters, gradient, alpha, tol, max_iter):
         > tol
     ):
 
-        new_parameters = parameters - alpha * gradient(parameters)
-        new_func_value = func(new_parameters)
-        parameters = new_parameters
-        func_values = np.append(func_values, new_func_value)
+        p_k = -gradient(x_k)
+        alpha = lineSearch(func, gradient, x_k, p_k)
+        x_k_next = x_k + alpha * p_k
+        func_x_k_next = func(x_k_next)
+        x_k = x_k_next
+        func_values = np.append(func_values, func_x_k_next)
+        alpha_values = np.append(alpha_values, alpha)
         i += 1
 
-    return {"parameters": parameters, "func_values": func_values}
+    return {"parameters": x_k, "func_values": func_values, "alpha_values": alpha_values}

@@ -25,25 +25,23 @@ def get_Ju_and_DJu(R, X, p):
         """
         Theta = Theta.reshape((m, p))
         E = np.nan_to_num(Theta @ X.T - R)
-        return E @ X
+        DJu_values = E @ X
+        return DJu_values.flatten()
 
     return Ju, DJu
 
 
-def get_Ja_and_DJa(R, Theta):
+def get_Ja_and_DJa(R, Theta, p):
+    _, n = R.shape
+
     def Ja(X):
-        return np.nansum(np.square(get_E(Theta, R, X))) / 2
+        X = X.reshape((n, p))
+        return np.nansum(np.square(Theta @ X.T - R)) / 2
 
     def DJa(X):
-        E = np.nan_to_num(get_E(Theta, R, X))
-        return E.T @ Theta
+        X = X.reshape((n, p))
+        E = np.nan_to_num(Theta @ X.T - R)
+        DJa_values = E.T @ Theta
+        return DJa_values.flatten()
 
     return Ja, DJa
-
-
-def initializeTheta(m, p):
-    return np.random.rand(m * p)
-
-
-def initializeX(n, p):
-    return np.random.rand(n * p)
