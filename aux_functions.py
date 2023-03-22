@@ -2,11 +2,11 @@ import numpy as np
 
 
 def initializeTheta(m, p):
-    return np.random.rand(m, p)
+    return np.random.randn(m, p)
 
 
 def initializeX(n, p):
-    return np.random.rand(n, p)
+    return np.random.randn(n, p)
 
 
 def get_phi_and_Dphi(func, Dfunc, x_k, p_k):
