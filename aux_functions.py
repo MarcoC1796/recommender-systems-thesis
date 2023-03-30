@@ -1,11 +1,11 @@
 import numpy as np
 
 
-def initializeTheta(m, p):
+def initializeQ(m, p):
     return np.random.randn(m, p)
 
 
-def initializeX(n, p):
+def initializeP(n, p):
     return np.random.randn(n, p)
 
 
