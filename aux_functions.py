@@ -1,12 +1,12 @@
 import numpy as np
 
 
-def initializeQ(m, p):
-    return np.random.randn(m, p)
+def initializeQ(m, f):
+    return np.random.randn(m, f)
 
 
-def initializeP(n, p):
-    return np.random.randn(n, p)
+def initializeP(n, f):
+    return np.random.randn(n, f)
 
 
 def get_phi_and_Dphi(func, Dfunc, x_k, p_k):

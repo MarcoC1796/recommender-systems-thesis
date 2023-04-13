@@ -37,36 +37,47 @@ def getRMSEs_Qfixed(newPs, Q, R):
     return RMSEs
 
 
-def ALS(R, f, alternations, tol, max_iter):
+def ALS(R, f, lambQ=0, lambP=0, alternations=1, tol=1e-3, max_iter=1e3):
     Q = initializeQ(R.shape[0], f)
     P = initializeP(R.shape[1], f)
 
-    RMSEs = []
-    J_values = []
+    Ju_alt_values = []
+    RMSEu_values = []
 
-    i = 0
+    Ja_alt_values = []
+    RMSEa_values = []
 
-    while i < alternations:
+    while len(Ja_alt_values) < alternations and (
+        len(Ja_alt_values) < 2
+        or np.absolute(Ja_alt_values[-1][-1] - Ja_alt_values[-2][-1])
+        / np.absolute(Ja_alt_values[-2][-1])
+        > tol
+    ):
         # Optimizing with respect to Q
-        Ju, DJu = get_Ju_and_DJu(R, P, f)
+        Ju, DJu = get_Ju_and_DJu(R, P, f, lambQ, lambP)
         Q = Q.flatten()
         gradientDescentResults = gradientDescent(Ju, Q, DJu, tol, max_iter)
         Q = gradientDescentResults["x_values"][-1].reshape(R.shape[0], -1)
         Ju_values = gradientDescentResults["func_values"]
         newQs = gradientDescentResults["x_values"]
-        J_values.append(Ju_values)
-        RMSEs.append(getRMSEs_Pfixed(newQs, P, R))
+        Ju_alt_values.append(Ju_values)
+        RMSEu_values.append(getRMSEs_Pfixed(newQs, P, R))
 
         # Optimizing with respect to P
-        Ja, DJa = get_Ja_and_DJa(R, Q, f)
+        Ja, DJa = get_Ja_and_DJa(R, Q, f, lambQ, lambP)
         P = P.flatten()
         gradientDescentResults = gradientDescent(Ja, P, DJa, tol, max_iter)
         P = gradientDescentResults["x_values"][-1].reshape(R.shape[1], -1)
         Ja_values = gradientDescentResults["func_values"]
         newPs = gradientDescentResults["x_values"]
-        J_values.append(Ja_values)
-        RMSEs.append(getRMSEs_Qfixed(newPs, Q, R))
+        Ja_alt_values.append(Ja_values)
+        RMSEa_values.append(getRMSEs_Qfixed(newPs, Q, R))
 
-        i += 1
-
-    return {"Q": Q, "P": P, "J_values": J_values, "RMSEs": RMSEs}
+    return {
+        "Q": Q,
+        "P": P,
+        "Ju_values": Ju_alt_values,
+        "Ja_values": Ja_alt_values,
+        "RMSEu_values": RMSEu_values,
+        "RMSEa_values": RMSEa_values,
+    }

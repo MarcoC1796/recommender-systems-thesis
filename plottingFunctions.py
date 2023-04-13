@@ -1,17 +1,17 @@
 import matplotlib.pyplot as plt
 
 
-def plotALSResults(altValues, title):
+def plotALSResults(Qvalues, Pvalues, title, altStart=0):
     fig, axs = plt.subplots(1, 2, figsize=(15, 5))
-    start = 1
+    start = 0
     fig.suptitle(title)
 
-    for i, values in enumerate(altValues):
+    for i, (Qvalue, Pvalue) in enumerate(
+        zip(Qvalues[altStart:], Pvalues[altStart:]), altStart
+    ):
+        values = Qvalue
         color = "b"
         label = "Ju (P fixed)"
-        if i % 2 != 0:
-            color = "orange"
-            label = "Ja (Q fixed)"
         axs[0].plot(
             list(range(start, start + len(values))), values, color=color, label=label
         )
@@ -19,11 +19,23 @@ def plotALSResults(altValues, title):
             list(range(start, start + len(values))), values, color=color, label=label
         )
 
-        if i < 2:
-            axs[0].legend(loc="upper right")
-            axs[1].legend(loc="upper right")
+        start += len(values) - 1
+
+        values = Pvalue
+        color = "orange"
+        label = "Ja (Q fixed)"
+        axs[0].plot(
+            list(range(start, start + len(values))), values, color=color, label=label
+        )
+        axs[1].loglog(
+            list(range(start, start + len(values))), values, color=color, label=label
+        )
 
         start += len(values) - 1
+
+        if i < 1:
+            axs[0].legend(loc="upper right")
+            axs[1].legend(loc="upper right")
 
     axs[0].set_title("Real Scale")
     axs[1].set_title("Logarithmic Scale")

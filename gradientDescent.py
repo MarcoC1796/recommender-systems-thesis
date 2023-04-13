@@ -3,7 +3,7 @@ import numpy as np
 from lineSearchAlgorithm import lineSearch
 
 
-def gradientDescent(func, x_0, gradient, tol, max_iter=1000, alpha=1e-4):
+def gradientDescent(func, x_0, gradient, tol, max_iter=1000, alpha=None):
     x_values = [x_0]
     func_x_0 = func(x_0)
     func_values = [func_x_0]

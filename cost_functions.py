@@ -1,47 +1,55 @@
 import numpy as np
 
 
-def get_Ju_and_DJu(R, X, p):
+def get_Ju_and_DJu(R, P, f, lambQ=0, lambP=0):
     """
     Arguments:
-        R: m x n matrix.
-        X: n x p matrix
+        R: m P n matriP.
+        P: n P p matriP
     """
 
     m, _ = R.shape
 
-    def Ju(Theta):
+    def Ju(Q):
         """
         Arguments:
-            Theta: a flattened array representing a m x p matrix
+            Q: a flattened array representing a m x p matrix
         """
-        Theta = Theta.reshape((m, p))
-        return np.nansum(np.square(Theta @ X.T - R)) / 2
+        Q = Q.reshape((m, f))
+        return (
+            np.nansum(np.square(Q @ P.T - R)) / 2
+            + (lambQ / 2) * np.nansum(np.square(Q))
+            + (lambP / 2) * np.nansum(np.square(P))
+        )
 
-    def DJu(Theta):
+    def DJu(Q):
         """
         Arguments:
-            Theta: a flattened array representing a m x p matrix
+            Q: a flattened array representing a m x p matrix
         """
-        Theta = Theta.reshape((m, p))
-        E = np.nan_to_num(Theta @ X.T - R)
-        DJu_values = E @ X
+        Q = Q.reshape((m, f))
+        E = np.nan_to_num(Q @ P.T - R)
+        DJu_values = E @ P + lambQ * Q
         return DJu_values.flatten()
 
     return Ju, DJu
 
 
-def get_Ja_and_DJa(R, Theta, p):
+def get_Ja_and_DJa(R, Q, f, lambQ, lambP):
     _, n = R.shape
 
-    def Ja(X):
-        X = X.reshape((n, p))
-        return np.nansum(np.square(Theta @ X.T - R)) / 2
+    def Ja(P):
+        P = P.reshape((n, f))
+        return (
+            np.nansum(np.square(Q @ P.T - R)) / 2
+            + (lambQ / 2) * np.nansum(np.square(Q))
+            + (lambP / 2) * np.nansum(np.square(P))
+        )
 
-    def DJa(X):
-        X = X.reshape((n, p))
-        E = np.nan_to_num(Theta @ X.T - R)
-        DJa_values = E.T @ Theta
+    def DJa(P):
+        P = P.reshape((n, f))
+        E = np.nan_to_num(Q @ P.T - R)
+        DJa_values = E.T @ Q + lambP * P
         return DJa_values.flatten()
 
     return Ja, DJa
