@@ -35,7 +35,7 @@ def get_Ju_and_DJu(R, P, f, lambQ=0, lambP=0):
     return Ju, DJu
 
 
-def get_Ja_and_DJa(R, Q, f, lambQ, lambP):
+def get_Ja_and_DJa(R, Q, f, lambQ=0, lambP=0):
     _, n = R.shape
 
     def Ja(P):
