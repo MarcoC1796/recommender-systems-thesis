@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import pandas as pd
 
 from aux_functions import initializeQ, initializeP
 from cost_functions import get_Ja_and_DJa, get_Ju_and_DJu
@@ -21,7 +22,7 @@ def plotALSResults(Qvalues, Pvalues, title, altStart=0):
         axs[0].plot(
             list(range(start, start + len(values))), values, color=color, label=label
         )
-        axs[1].loglog(
+        axs[1].semilogy(
             list(range(start, start + len(values))), values, color=color, label=label
         )
 
@@ -33,7 +34,7 @@ def plotALSResults(Qvalues, Pvalues, title, altStart=0):
         axs[0].plot(
             list(range(start, start + len(values))), values, color=color, label=label
         )
-        axs[1].loglog(
+        axs[1].semilogy(
             list(range(start, start + len(values))), values, color=color, label=label
         )
 
@@ -144,3 +145,114 @@ def plot_costFunction_with_different_lamb(
         axs[x, y].text(0.2, 0.7, text, transform=axs[x, y].transAxes)
 
     plt.show()
+
+
+def plot_hist_boxplot(data, title):
+    f, (ax_box, ax_hist) = plt.subplots(
+        2, sharex=True, gridspec_kw={"height_ratios": (0.15, 0.85)}
+    )
+
+    sns.boxplot(data, ax=ax_box, orient="h")
+    sns.histplot(data, ax=ax_hist, discrete=True, color="steelblue", kde=True)
+
+    # Add a vertical line at the mean value
+    mean_rating = np.mean(data)
+    ax_hist.axvline(x=mean_rating, color="red", linestyle="--")
+
+    # Annotate the mean line with its value
+    ax_hist.text(
+        mean_rating + 0.3,
+        ax_hist.get_ylim()[1] * 0.8,
+        f"Mean: {mean_rating:.2f}",
+        color="darkred",
+        weight="bold",
+    )
+
+    # Annotate the boxplot with statistics
+    median = np.median(data)
+    q1 = np.percentile(data, q=25)
+    q3 = np.percentile(data, q=75)
+
+    pos_y = -0.2
+    pos_median = median
+    pos_q1 = q1 - (q3 - q1) / 10
+    pos_q3 = q3 + (q3 - q1) / 10
+
+    ax_box.text(
+        pos_median,
+        pos_y,
+        f"Q2: {median:.2f}",
+        verticalalignment="center",
+        ha="center",
+        size="medium",
+        color="white",
+        weight="semibold",
+    )
+    ax_box.text(
+        pos_q1,
+        pos_y,
+        f"Q1: {q1:.2f}",
+        verticalalignment="center",
+        ha="right",
+        size="medium",
+        color="black",
+    )
+    ax_box.text(
+        pos_q3,
+        pos_y,
+        f"Q3: {q3:.2f}",
+        verticalalignment="center",
+        ha="left",
+        size="medium",
+        color="black",
+    )
+
+    # Set the x-tick labels
+    x_ticks = np.arange(-10, 11, 2)
+    ax_hist.set_xticks(x_ticks)
+    ax_hist.set_xticklabels(x_ticks)
+
+    ax_box.set(xlabel="")
+    plt.xlabel("Rating")
+    plt.ylabel("Count")
+    plt.suptitle(title)
+
+    plt.show()
+
+    # Calculate various statistics
+    mean_rating = np.mean(data)
+    var_rating = np.var(data, ddof=1)
+    std_rating = np.std(data, ddof=1)
+    median_rating = np.median(data)
+    q1_rating = np.percentile(data, q=25)
+    q2_rating = np.percentile(data, q=50)
+    q3_rating = np.percentile(data, q=75)
+
+    # Create a dataframe to present the statistics
+    data = {
+        "Metric": [
+            "Mean",
+            "Variance",
+            "Standard deviation",
+            "Median",
+            "Q1",
+            "Q2",
+            "Q3",
+        ],
+        "Value": [
+            mean_rating,
+            var_rating,
+            std_rating,
+            median_rating,
+            q1_rating,
+            q2_rating,
+            q3_rating,
+        ],
+    }
+    stats_df = pd.DataFrame(data)
+
+    # Format the dataframe
+    stats_df["Value"] = stats_df["Value"].apply(lambda x: f"{x:.2f}")
+    stats_df = stats_df.set_index("Metric")
+
+    return stats_df
