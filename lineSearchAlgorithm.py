@@ -3,14 +3,12 @@ from aux_functions import get_phi_and_Dphi
 
 
 def lineSearch(func, Dfunc, x_k, p_k, alpha_max=128, c_1=0.3, c_2=0.6):
-
     phi, Dphi = get_phi_and_Dphi(func, Dfunc, x_k, p_k)
 
     phi_0 = phi(0)
     Dphi_0 = Dphi(0)
 
     def zoom(alpha_lo, alpha_hi):
-
         i = 1
 
         # while True
@@ -36,12 +34,11 @@ def lineSearch(func, Dfunc, x_k, p_k, alpha_max=128, c_1=0.3, c_2=0.6):
         return alpha_j
 
     alpha_i_1 = 0
-    alpha_i = 1
+    alpha_i = 1e-3
 
     i = 1
 
     while alpha_i <= alpha_max:
-
         phi_val_i = phi(alpha_i)
         phi_val_i_1 = phi(alpha_i_1)
 

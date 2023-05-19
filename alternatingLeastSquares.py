@@ -157,6 +157,7 @@ def ALS(
             )
             RMSEa_values.append(RMSE_values_parameter_biased)
         else:
+            print(" Optimizing Q")
             # Optimizing with respect to Q
             Ju, DJu = get_Ju_and_DJu(R, P, f, lambQ, lambP)
             Q = Q.flatten()
@@ -167,6 +168,7 @@ def ALS(
             Ju_alt_values.append(Ju_values)
             RMSEu_values.append(getRMSEs_Pfixed(newQs, P, R))
 
+            print(" Oprimizing P")
             # Optimizing with respect to P
             Ja, DJa = get_Ja_and_DJa(R, Q, f, lambQ, lambP)
             P = P.flatten()
@@ -176,6 +178,8 @@ def ALS(
             newPs = gradientDescentResults["x_values"]
             Ja_alt_values.append(Ja_values)
             RMSEa_values.append(getRMSEs_Qfixed(newPs, Q, R))
+
+        print(f"Alternations Completed: {len(Ja_alt_values)}")
 
     return {
         "Q": Q,

@@ -191,3 +191,39 @@ def get_Ja_and_DJa(
             return DJa_values.flatten()
 
     return Ja, DJa
+
+
+def get_Jsim_and_DJsim(R, f, lambQ=0, lambP=0):
+    m, n = R.shape
+
+    def Jsim(Theta):
+        Q = Theta[: m * f].reshape(m, f)
+        P = Theta[m * f :].reshape(n, f)
+
+        J = np.nansum(np.square(Q @ P.T - R)) / 2
+
+        if lambQ != 0:
+            J += (lambQ / 2) * np.sum(np.square(Q))
+        if lambP != 0:
+            J += (lambP / 2) * np.sum(np.square(P))
+
+        return J
+
+    def DJsim(Theta):
+        Q = Theta[: m * f].reshape(m, f)
+        P = Theta[m * f :].reshape(n, f)
+
+        E = np.nan_to_num(Q @ P.T - R)
+        dJ_dQ = E @ P
+        if lambQ != 0:
+            dJ_dQ += lambQ * Q
+
+        dJ_dP = E.T @ Q
+        if lambP != 0:
+            dJ_dP += lambP * P
+
+        dJ_dTheta = np.concatenate((dJ_dQ, dJ_dP))
+
+        return dJ_dTheta.flatten()
+
+    return Jsim, DJsim
