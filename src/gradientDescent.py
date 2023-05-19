@@ -2,7 +2,7 @@ import numpy as np
 import math
 import time
 
-from lineSearchAlgorithm import lineSearch
+from .lineSearchAlgorithm import lineSearch
 
 
 def gradientDescent(func, x_0, gradient, tol, max_iter=1000, alpha0=None):

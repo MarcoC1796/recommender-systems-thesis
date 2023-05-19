@@ -1,8 +1,8 @@
 import numpy as np
-from gradientDescent import gradientDescent
-from cost_functions import get_Ju_and_DJu, get_Ja_and_DJa, get_alpha, get_beta
-from aux_functions import initializeQ, initializeP
-from accuracyMetrics import RMSE
+from .gradientDescent import gradientDescent
+from .cost_functions import get_Ju_and_DJu, get_Ja_and_DJa, get_alpha, get_beta
+from .aux_functions import initializeQ, initializeP
+from .accuracyMetrics import RMSE
 
 
 def getRMSEs_Pfixed(

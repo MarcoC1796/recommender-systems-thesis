@@ -1,5 +1,5 @@
 import numpy as np
-from aux_functions import get_phi_and_Dphi
+from .aux_functions import get_phi_and_Dphi
 
 
 def lineSearch(func, Dfunc, x_k, p_k, alpha_max=128, c_1=0.3, c_2=0.6):

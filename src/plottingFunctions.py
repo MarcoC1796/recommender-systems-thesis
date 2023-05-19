@@ -3,9 +3,9 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-from aux_functions import initializeQ, initializeP
-from cost_functions import get_Ja_and_DJa, get_Ju_and_DJu
-from gradientDescent import gradientDescent
+from .aux_functions import initializeQ, initializeP
+from .cost_functions import get_Ja_and_DJa, get_Ju_and_DJu
+from .gradientDescent import gradientDescent
 
 
 def plotALSResults(Qvalues, Pvalues, title, altStart=0):
