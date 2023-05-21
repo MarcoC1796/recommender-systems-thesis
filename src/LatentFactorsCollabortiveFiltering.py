@@ -4,9 +4,18 @@ from .aux_functions import standardize_interactions
 
 
 class LatentFactorsCollaborativeFiltering:
-    def __init__(self, num_users, num_items, standardize=True):
+    def __init__(
+        self,
+        num_users,
+        num_items,
+        num_factors=10,
+        include_biases=True,
+        standardize=True,
+    ):
         self.num_users = num_users
         self.num_items = num_items
+        self.num_factors = self.num_factors
+        self.include_biases = include_biases
         self.user_biases = None
         self.item_biases = None
         self.user_embeddings = None
@@ -19,8 +28,6 @@ class LatentFactorsCollaborativeFiltering:
         self,
         train_interactions,
         validation_interactions=None,
-        num_factors=10,
-        biases=True,
         epochs=10,
         batch_size=128,
         learning_rate=0.01,
@@ -33,12 +40,7 @@ class LatentFactorsCollaborativeFiltering:
             self.mean_train = mean_train
             self.std_train = std_train
 
-        self.user_embeddings = np.random.default_rng().normal(
-            size=(self.num_users, num_factors + 2)
-        )
-        self.item_embeddings = np.random.default_rng().normal(
-            size=(self.num_items, num_factors + 2)
-        )
+        self.initililize_embeddings()
 
         self.user_embeddings[:, -1] = 1
         self.item_embeddings[:-2] = 1
@@ -120,7 +122,7 @@ class LatentFactorsCollaborativeFiltering:
         self.item_embeddings[:, -2] = 1
         return errors
 
-    def evaluateRMSE(self, test_interactions):
+    def evaluate_RMSE(self, test_interactions):
         test_users, test_items, test_ratings = np.split(test_interactions, 3, axis=1)
         test_users = test_users.flatten().astype(int)
         test_items = test_items.flatten().astype(int)
@@ -131,3 +133,14 @@ class LatentFactorsCollaborativeFiltering:
         errors = test_ratings - test_predictions
         test_rmse = np.sqrt(np.mean(errors**2))
         return test_rmse
+
+    def initililize_embeddings(self):
+        num_cols_embeddings = (
+            self.num_factors + 2 if self.include_biases else self.num_factors
+        )
+        self.user_embeddings = np.random.default_rng().normal(
+            size=(self.num_users, num_cols_embeddings)
+        )
+        self.item_embeddings = np.random.default_rng().normal(
+            size=(self.num_items, num_cols_embeddings)
+        )
