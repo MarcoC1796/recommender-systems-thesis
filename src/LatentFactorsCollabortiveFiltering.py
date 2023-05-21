@@ -29,6 +29,7 @@ class LatentFactorsCollaborativeFiltering:
         train_interactions,
         validation_interactions=None,
         num_factors=None,
+        reg_strength=0,
         epochs=10,
         batch_size=128,
         learning_rate=0.01,
@@ -71,7 +72,9 @@ class LatentFactorsCollaborativeFiltering:
                 users = users.flatten().astype(int)
                 items = items.flatten().astype(int)
                 ratings = ratings.flatten()
-                errors = self.update_params(users, items, ratings, learning_rate)
+                errors = self.update_params(
+                    users, items, ratings, learning_rate, reg_strength
+                )
                 train_error += np.sum(errors**2)
 
             train_errors.append(np.sqrt(train_error / len(train_interactions)))
@@ -116,14 +119,18 @@ class LatentFactorsCollaborativeFiltering:
         top_item_indices = np.argsort(scores)[::-1][:top_k]
         return top_item_indices
 
-    def update_params(self, users, items, ratings, learning_rate):
+    def update_params(self, users, items, ratings, learning_rate, reg_strength):
         errors = ratings - self.predict_batch(users, items)
         user_gradients = errors[:, np.newaxis] * self.item_embeddings[items, :]
         item_gradients = errors[:, np.newaxis] * self.user_embeddings[users, :]
+        if reg_strength > 0:
+            user_gradients -= reg_strength * self.user_embeddings[users, :]
+            item_gradients -= reg_strength * self.item_embeddings[items, :]
         self.user_embeddings[users, :] += learning_rate * user_gradients
         self.item_embeddings[items, :] += learning_rate * item_gradients
-        self.user_embeddings[:, -1] = 1
-        self.item_embeddings[:, -2] = 1
+        if self.include_biases:
+            self.user_embeddings[:, -1] = 1
+            self.item_embeddings[:, -2] = 1
         return errors
 
     def evaluate_RMSE(self, test_interactions):
