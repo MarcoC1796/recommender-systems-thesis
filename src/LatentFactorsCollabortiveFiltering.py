@@ -14,7 +14,7 @@ class LatentFactorsCollaborativeFiltering:
     ):
         self.num_users = num_users
         self.num_items = num_items
-        self.num_factors = self.num_factors
+        self.num_factors = num_factors
         self.include_biases = include_biases
         self.user_biases = None
         self.item_biases = None
@@ -28,11 +28,15 @@ class LatentFactorsCollaborativeFiltering:
         self,
         train_interactions,
         validation_interactions=None,
+        num_factors=None,
         epochs=10,
         batch_size=128,
         learning_rate=0.01,
-        tolerance=1e-4,
+        tolerance=1e-5,
     ):
+        if num_factors is not None:
+            self.num_factors = num_factors
+
         if self.standardize:
             train_interactions, mean_train, std_train = standardize_interactions(
                 train_interactions
@@ -73,7 +77,7 @@ class LatentFactorsCollaborativeFiltering:
             train_errors.append(np.sqrt(train_error / len(train_interactions)))
 
             if validation_interactions is not None:
-                validation_error = self.evaluateRMSE(validation_interactions)
+                validation_error = self.evaluate_RMSE(validation_interactions)
                 validation_errors.append(validation_error)
 
             # Check if relative improvement in training error falls below tolerance
@@ -138,9 +142,13 @@ class LatentFactorsCollaborativeFiltering:
         num_cols_embeddings = (
             self.num_factors + 2 if self.include_biases else self.num_factors
         )
+
+        loc = 0 if self.standardize else self.mean_train
+        scale = 1 if self.standardize else self.std_train
+
         self.user_embeddings = np.random.default_rng().normal(
-            size=(self.num_users, num_cols_embeddings)
+            loc=loc, scale=scale, size=(self.num_users, num_cols_embeddings)
         )
         self.item_embeddings = np.random.default_rng().normal(
-            size=(self.num_items, num_cols_embeddings)
+            loc=loc, scale=scale, size=(self.num_items, num_cols_embeddings)
         )
