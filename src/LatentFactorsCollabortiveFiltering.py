@@ -66,7 +66,7 @@ class LatentFactorsCollaborativeFiltering:
                 validation_error = self.evaluateRMSE(validation_interactions)
                 validation_errors.append(validation_error)
             pbar_outer.set_description(
-                f"Current Error: {train_errors[-1]:.2e} | Traning Progress"
+                f"Current RMSE: {train_errors[-1]:.2e} | Traning Progress"
             )
 
         return train_errors, validation_errors
