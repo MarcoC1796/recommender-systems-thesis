@@ -7,6 +7,8 @@ class LatentFactorsCollaborativeFiltering:
     def __init__(self, num_users, num_items, standardize=True):
         self.num_users = num_users
         self.num_items = num_items
+        self.user_biases = None
+        self.item_biases = None
         self.user_embeddings = None
         self.item_embeddings = None
         self.standardize = standardize
@@ -29,11 +31,11 @@ class LatentFactorsCollaborativeFiltering:
             self.mean_train = mean_train
             self.std_train = std_train
 
-        self.user_embeddings = np.random.normal(
-            loc=0, scale=1, size=(self.num_users, num_factors)
+        self.user_embeddings = np.random.Generator.normal(
+            size=(self.num_users, num_factors)
         )
-        self.item_embeddings = np.random.normal(
-            loc=0, scale=1, size=(self.num_items, num_factors)
+        self.item_embeddings = np.random.Generator.normal(
+            size=(self.num_items, num_factors)
         )
 
         train_errors = []
