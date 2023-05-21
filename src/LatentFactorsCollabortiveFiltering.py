@@ -20,9 +20,11 @@ class LatentFactorsCollaborativeFiltering:
         train_interactions,
         validation_interactions=None,
         num_factors=10,
+        biases=True,
         epochs=10,
         batch_size=128,
         learning_rate=0.01,
+        tolerance=1e-4,
     ):
         if self.standardize:
             train_interactions, mean_train, std_train = standardize_interactions(
@@ -31,17 +33,20 @@ class LatentFactorsCollaborativeFiltering:
             self.mean_train = mean_train
             self.std_train = std_train
 
-        self.user_embeddings = np.random.Generator.normal(
-            size=(self.num_users, num_factors)
+        self.user_embeddings = np.random.default_rng().normal(
+            size=(self.num_users, num_factors + 2)
         )
-        self.item_embeddings = np.random.Generator.normal(
-            size=(self.num_items, num_factors)
+        self.item_embeddings = np.random.default_rng().normal(
+            size=(self.num_items, num_factors + 2)
         )
+
+        self.user_embeddings[:, -1] = 1
+        self.item_embeddings[:-2] = 1
 
         train_errors = []
         validation_errors = []
 
-        pbar_outer = trange(epochs, desc="Current RMSE: None | Training Progress: ")
+        pbar_outer = trange(epochs, desc="RMSE: None | Progress: ")
 
         for epoch in pbar_outer:
             np.random.shuffle(train_interactions)
@@ -64,13 +69,29 @@ class LatentFactorsCollaborativeFiltering:
                 train_error += np.sum(errors**2)
 
             train_errors.append(np.sqrt(train_error / len(train_interactions)))
+
             if validation_interactions is not None:
                 validation_error = self.evaluateRMSE(validation_interactions)
                 validation_errors.append(validation_error)
-            pbar_outer.set_description(
-                f"Current RMSE: {train_errors[-1]:.2e} | Traning Progress"
-            )
 
+            # Check if relative improvement in training error falls below tolerance
+            if epoch > 0:
+                absolute_improvement = train_errors[-2] - train_errors[-1]
+                if absolute_improvement < 0:
+                    pbar_outer.set_description(
+                        f"Early Stopping at Epoch {epoch+1} due to failure to improve RMSE | RMSE = {train_errors[-1]:.2e} | Progress"
+                    )
+                    break
+
+                if absolute_improvement / train_errors[-2] < tolerance:
+                    pbar_outer.set_description(
+                        f"Early Stopping at Epoch {epoch+1} due to tolerance reached | RMSE = {train_errors[-1]:.2e}  | Progress"
+                    )
+                    break
+
+            pbar_outer.set_description(f"RMSE: {train_errors[-1]:.2e} | Progress")
+
+        pbar_outer.close()
         return train_errors, validation_errors
 
     def predict(self, user, item):
@@ -95,6 +116,8 @@ class LatentFactorsCollaborativeFiltering:
         item_gradients = errors[:, np.newaxis] * self.user_embeddings[users, :]
         self.user_embeddings[users, :] += learning_rate * user_gradients
         self.item_embeddings[items, :] += learning_rate * item_gradients
+        self.user_embeddings[:, -1] = 1
+        self.item_embeddings[:, -2] = 1
         return errors
 
     def evaluateRMSE(self, test_interactions):
