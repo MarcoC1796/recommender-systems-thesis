@@ -54,7 +54,7 @@ class LatentFactorsCollaborativeFiltering:
         train_errors = []
         validation_errors = []
 
-        pbar_outer = trange(epochs, desc="RMSE: None | Progress: ")
+        pbar_outer = trange(epochs, desc="RMSE: None | Progress: ", leave=False)
 
         for epoch in pbar_outer:
             np.random.shuffle(train_interactions)
