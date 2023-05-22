@@ -51,9 +51,6 @@ class LatentFactorsCollaborativeFiltering:
 
         self.initililize_embeddings()
 
-        self.user_embeddings[:, -1] = 1
-        self.item_embeddings[:-2] = 1
-
         train_errors = []
         validation_errors = []
 
