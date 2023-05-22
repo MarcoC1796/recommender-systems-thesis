@@ -34,6 +34,7 @@ class LatentFactorsCollaborativeFiltering:
         batch_size=128,
         learning_rate=0.01,
         tolerance=None,
+        compute_detailed_errors=False,
     ):
         if num_factors is not None:
             self.num_factors = num_factors
@@ -77,7 +78,12 @@ class LatentFactorsCollaborativeFiltering:
                 )
                 train_error += np.sum(errors**2)
 
-            train_errors.append(np.sqrt(train_error / len(train_interactions)))
+                if compute_detailed_errors:
+                    current_error = self.evaluate_RMSE(train_interactions)
+                    train_errors.append(current_error)
+
+            if not compute_detailed_errors:
+                train_errors.append(np.sqrt(train_error / len(train_interactions)))
 
             if validation_interactions is not None:
                 validation_error = self.evaluate_RMSE(validation_interactions)
