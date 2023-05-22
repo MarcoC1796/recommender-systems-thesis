@@ -30,5 +30,5 @@ def standardize_interactions(
     interactions_standardized = deepcopy(interactions)
     interactions_standardized[:, 2] = (
         interactions_standardized[:, 2] - mean_interactions
-    ) / standardize_interactions
+    ) / std_interactions
     return interactions_standardized, mean_interactions, std_interactions
