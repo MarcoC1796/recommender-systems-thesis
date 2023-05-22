@@ -72,12 +72,8 @@ class LatentFactorsCollaborativeFiltering:
                 start_idx = batch_idx * batch_size
                 end_idx = start_idx + batch_size
                 batch_interactions = train_interactions[start_idx:end_idx]
-                users, items, ratings = np.split(batch_interactions, 3, axis=1)
-                users = users.flatten().astype(int)
-                items = items.flatten().astype(int)
-                ratings = ratings.flatten()
                 errors = self.update_params(
-                    users, items, ratings, learning_rate, reg_strength
+                    batch_interactions, learning_rate, reg_strength
                 )
                 train_error += np.sum(errors**2)
 
@@ -122,18 +118,25 @@ class LatentFactorsCollaborativeFiltering:
         top_item_indices = np.argsort(scores)[::-1][:top_k]
         return top_item_indices
 
-    def update_params(self, users, items, ratings, learning_rate, reg_strength):
+    def update_params(self, interactions, learning_rate, reg_strength):
+        users, items, ratings = self.split_interactions(interactions)
         errors = ratings - self.predict_batch(users, items)
+
         user_gradients = errors[:, np.newaxis] * self.item_embeddings[items, :]
         item_gradients = errors[:, np.newaxis] * self.user_embeddings[users, :]
+
         if reg_strength > 0:
             user_gradients -= reg_strength * self.user_embeddings[users, :]
             item_gradients -= reg_strength * self.item_embeddings[items, :]
-        self.user_embeddings[users, :] += learning_rate * user_gradients
-        self.item_embeddings[items, :] += learning_rate * item_gradients
+
+        # Update embeddings with np.add.at for performance and handling duplicates
+        np.add.at(self.user_embeddings, users, learning_rate * user_gradients)
+        np.add.at(self.item_embeddings, items, learning_rate * item_gradients)
+
         if self.include_biases:
             self.user_embeddings[:, -1] = 1
             self.item_embeddings[:, -2] = 1
+
         return errors
 
     def evaluate_RMSE(self, test_interactions):
@@ -166,3 +169,10 @@ class LatentFactorsCollaborativeFiltering:
         if self.include_biases:
             self.user_embeddings[:, -1] = 1
             self.item_embeddings[:, -2] = 1
+
+    def split_interactions(self, interactions):
+        users, items, ratings = np.split(interactions, 3, axis=1)
+        users = users.flatten().astype(int)
+        items = items.flatten().astype(int)
+        ratings = ratings.flatten()
+        return users, items, ratings
