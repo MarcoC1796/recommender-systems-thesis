@@ -87,7 +87,7 @@ class LatentFactorsCollaborativeFiltering:
                 validation_error = self.evaluate_RMSE(validation_interactions)
                 validation_errors.append(validation_error)
 
-            if epoch > 0:
+            if tolerance is not None and epoch > 0:
                 absolute_improvement = train_errors[-2] - train_errors[-1]
                 if absolute_improvement < 0:
                     pbar_outer.set_description(
