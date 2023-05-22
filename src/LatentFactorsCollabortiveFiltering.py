@@ -58,9 +58,12 @@ class LatentFactorsCollaborativeFiltering:
 
         for epoch in pbar_outer:
             np.random.shuffle(train_interactions)
+
             train_error = 0.0
             validation_error = 0.0
+
             num_batches = int(np.ceil(len(train_interactions) / batch_size))
+
             pbar_inner = trange(
                 num_batches, desc=f"Epoch {epoch+1}/{epochs}", leave=False
             )
