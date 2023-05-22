@@ -33,7 +33,7 @@ class LatentFactorsCollaborativeFiltering:
         epochs=10,
         batch_size=128,
         learning_rate=0.01,
-        tolerance=1e-5,
+        tolerance=None,
     ):
         if num_factors is not None:
             self.num_factors = num_factors
@@ -42,6 +42,10 @@ class LatentFactorsCollaborativeFiltering:
             train_interactions, mean_train, std_train = standardize_interactions(
                 train_interactions
             )
+            self.mean_train = mean_train
+            self.std_train = std_train
+        else:
+            _, mean_train, std_train = standardize_interactions(train_interactions)
             self.mean_train = mean_train
             self.std_train = std_train
 
@@ -59,7 +63,7 @@ class LatentFactorsCollaborativeFiltering:
             np.random.shuffle(train_interactions)
             train_error = 0.0
             validation_error = 0.0
-            num_batches = len(train_interactions) // batch_size
+            num_batches = int(np.ceil(len(train_interactions) / batch_size))
             pbar_inner = trange(
                 num_batches, desc=f"Epoch {epoch+1}/{epochs}", leave=False
             )
@@ -83,7 +87,6 @@ class LatentFactorsCollaborativeFiltering:
                 validation_error = self.evaluate_RMSE(validation_interactions)
                 validation_errors.append(validation_error)
 
-            # Check if relative improvement in training error falls below tolerance
             if epoch > 0:
                 absolute_improvement = train_errors[-2] - train_errors[-1]
                 if absolute_improvement < 0:
@@ -159,3 +162,7 @@ class LatentFactorsCollaborativeFiltering:
         self.item_embeddings = np.random.default_rng().normal(
             loc=loc, scale=scale, size=(self.num_items, num_cols_embeddings)
         )
+
+        if self.include_biases:
+            self.user_embeddings[:, -1] = 1
+            self.item_embeddings[:, -2] = 1
