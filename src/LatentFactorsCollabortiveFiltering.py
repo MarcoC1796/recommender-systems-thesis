@@ -34,6 +34,7 @@ class LatentFactorsCollaborativeFiltering:
         batch_size=128,
         learning_rate=0.01,
         tolerance=None,
+        max_batches_per_epoch=None,
         compute_detailed_errors=False,
     ):
         if num_factors is not None:
@@ -63,7 +64,11 @@ class LatentFactorsCollaborativeFiltering:
             train_error = 0.0
             validation_error = 0.0
 
-            num_batches = int(np.ceil(len(train_interactions) / batch_size))
+            num_batches = (
+                int(np.ceil(len(train_interactions) / batch_size))
+                if max_batches_per_epoch is None
+                else max_batches_per_epoch
+            )
 
             pbar_inner = trange(
                 num_batches, desc=f"Epoch {epoch+1}/{epochs}", leave=False
@@ -124,6 +129,45 @@ class LatentFactorsCollaborativeFiltering:
         top_item_indices = np.argsort(scores)[::-1][:top_k]
         return top_item_indices
 
+    def update_params(self, interactions, learning_rate, reg_strength):
+        users, items, ratings = self.split_interactions(interactions)
+        errors = ratings - self.predict_batch(users, items)
+
+        user_gradients = errors[:, np.newaxis] * self.item_embeddings[items, :]
+        item_gradients = errors[:, np.newaxis] * self.user_embeddings[users, :]
+
+        if reg_strength > 0:
+            user_gradients -= reg_strength * self.user_embeddings[users, :]
+            item_gradients -= reg_strength * self.item_embeddings[items, :]
+
+        np.add.at(self.user_embeddings, users, learning_rate * user_gradients)
+        np.add.at(self.item_embeddings, items, learning_rate * item_gradients)
+
+        if self.include_biases:
+            self.user_embeddings[:, -1] = 1
+            self.item_embeddings[:, -2] = 1
+
+        return errors
+
+    def update_batch_params_and_gradients(
+        self, interactions, learning_rate, reg_strength
+    ):
+        (
+            errors,
+            unique_users,
+            user_gradients,
+            unique_items,
+            item_gradients,
+        ) = self.compute_batch_gradients(interactions, reg_strength)
+        self.user_embeddings[unique_users, :] += learning_rate * user_gradients
+        self.item_embeddings[unique_items, :] += learning_rate * item_gradients
+
+        if self.include_biases:
+            self.user_embeddings[:, -1] = 1
+            self.item_embeddings[:, -2] = 1
+
+        return errors
+
     def compute_batch_gradients(self, interactions, reg_strength):
         users, items, ratings = self.split_interactions(interactions)
         user_embeddings = self.user_embeddings[users, :]
@@ -143,7 +187,6 @@ class LatentFactorsCollaborativeFiltering:
 
         user_gradients_sum = np.zeros((len(unique_users), self.num_factors))
         item_gradients_sum = np.zeros((len(unique_items), self.num_factors))
-
         np.add.at(user_gradients_sum, user_indices, user_gradients)
         np.add.at(item_gradients_sum, item_indices, item_gradients)
 
@@ -154,18 +197,6 @@ class LatentFactorsCollaborativeFiltering:
             unique_items,
             item_gradients_sum,
         )
-
-    def update_batch_params(self, interactions, learning_rate):
-        (
-            errors,
-            unique_users,
-            user_gradients,
-            unique_items,
-            item_gradients,
-        ) = self.compute_batch_gradients(interactions)
-        self.user_embeddings[unique_users, :] += learning_rate * user_gradients
-        self.item_embeddings[unique_items, :] += learning_rate * item_gradients
-        return errors
 
     def evaluate_RMSE(self, test_interactions):
         test_users, test_items, test_ratings = np.split(test_interactions, 3, axis=1)
@@ -180,7 +211,7 @@ class LatentFactorsCollaborativeFiltering:
         return test_rmse
 
     def initililize_embeddings(self):
-        num_cols_embeddings = (
+        self.num_factors = (
             self.num_factors + 2 if self.include_biases else self.num_factors
         )
 
@@ -188,10 +219,10 @@ class LatentFactorsCollaborativeFiltering:
         scale = 1 if self.standardize else self.std_train
 
         self.user_embeddings = np.random.default_rng().normal(
-            loc=loc, scale=scale, size=(self.num_users, num_cols_embeddings)
+            loc=loc, scale=scale, size=(self.num_users, self.num_factors)
         )
         self.item_embeddings = np.random.default_rng().normal(
-            loc=loc, scale=scale, size=(self.num_items, num_cols_embeddings)
+            loc=loc, scale=scale, size=(self.num_items, self.num_factors)
         )
 
         if self.include_biases:
