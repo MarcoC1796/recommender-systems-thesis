@@ -124,25 +124,47 @@ class LatentFactorsCollaborativeFiltering:
         top_item_indices = np.argsort(scores)[::-1][:top_k]
         return top_item_indices
 
-    def update_params(self, interactions, learning_rate, reg_strength):
+    def compute_batch_gradients(self, interactions, reg_strength):
         users, items, ratings = self.split_interactions(interactions)
-        errors = ratings - self.predict_batch(users, items)
+        user_embeddings = self.user_embeddings[users, :]
+        item_embeddings = self.item_embeddings[items, :]
+        predictions = self.predict_batch(users, items)
+        errors = ratings - predictions
 
-        user_gradients = errors[:, np.newaxis] * self.item_embeddings[items, :]
-        item_gradients = errors[:, np.newaxis] * self.user_embeddings[users, :]
+        user_gradients = errors[:, np.newaxis] * item_embeddings
+        item_gradients = errors[:, np.newaxis] * user_embeddings
 
         if reg_strength > 0:
             user_gradients -= reg_strength * self.user_embeddings[users, :]
             item_gradients -= reg_strength * self.item_embeddings[items, :]
 
-        # Update embeddings with np.add.at for performance and handling duplicates
-        np.add.at(self.user_embeddings, users, learning_rate * user_gradients)
-        np.add.at(self.item_embeddings, items, learning_rate * item_gradients)
+        unique_users, user_indices = np.unique(users, return_inverse=True)
+        unique_items, item_indices = np.unique(items, return_inverse=True)
 
-        if self.include_biases:
-            self.user_embeddings[:, -1] = 1
-            self.item_embeddings[:, -2] = 1
+        user_gradients_sum = np.zeros((len(unique_users), self.num_factors))
+        item_gradients_sum = np.zeros((len(unique_items), self.num_factors))
 
+        np.add.at(user_gradients_sum, user_indices, user_gradients)
+        np.add.at(item_gradients_sum, item_indices, item_gradients)
+
+        return (
+            errors,
+            unique_users,
+            user_gradients_sum,
+            unique_items,
+            item_gradients_sum,
+        )
+
+    def update_batch_params(self, interactions, learning_rate):
+        (
+            errors,
+            unique_users,
+            user_gradients,
+            unique_items,
+            item_gradients,
+        ) = self.compute_batch_gradients(interactions)
+        self.user_embeddings[unique_users, :] += learning_rate * user_gradients
+        self.item_embeddings[unique_items, :] += learning_rate * item_gradients
         return errors
 
     def evaluate_RMSE(self, test_interactions):
