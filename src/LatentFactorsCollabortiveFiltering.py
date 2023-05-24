@@ -119,17 +119,17 @@ class LatentFactorsCollaborativeFiltering:
         return train_errors, validation_errors
 
     def predict(self, user, item):
-        user_embedding = self.user_embeddings[user, :]
-        item_embedding = self.item_embeddings[item, :]
+        user_embedding = self.user_embeddings[user]
+        item_embedding = self.item_embeddings[item]
         return np.dot(user_embedding, item_embedding)
 
     def predict_batch(self, users, items):
-        user_embeddings_batch = self.user_embeddings[users, :]
-        item_embeddings_batch = self.item_embeddings[items, :]
+        user_embeddings_batch = self.user_embeddings[users]
+        item_embeddings_batch = self.item_embeddings[items]
         return np.sum(user_embeddings_batch * item_embeddings_batch, axis=1)
 
     def recommend_items(self, user, top_k=5):
-        user_embedding = self.user_embeddings[user, :]
+        user_embedding = self.user_embeddings[user]
         scores = np.dot(self.item_embeddings, user_embedding)
         top_item_indices = np.argsort(scores)[::-1][:top_k]
         return top_item_indices
@@ -138,8 +138,8 @@ class LatentFactorsCollaborativeFiltering:
         users, items, ratings = self.split_interactions(interactions)
         errors = ratings - self.predict_batch(users, items)
 
-        user_gradients = errors[:, np.newaxis] * self.item_embeddings[items, :]
-        item_gradients = errors[:, np.newaxis] * self.user_embeddings[users, :]
+        user_gradients = errors[:, np.newaxis] * self.item_embeddings[items]
+        item_gradients = errors[:, np.newaxis] * self.user_embeddings[users]
 
         np.add.at(self.user_embeddings, users, learning_rate * user_gradients)
         np.add.at(self.item_embeddings, items, learning_rate * item_gradients)
@@ -159,8 +159,8 @@ class LatentFactorsCollaborativeFiltering:
             item_gradients,
         ) = self.compute_gradients(interactions, reg_strength)
 
-        self.user_embeddings[unique_users, :] += learning_rate * user_gradients
-        self.item_embeddings[unique_items, :] += learning_rate * item_gradients
+        self.user_embeddings[unique_users] += learning_rate * user_gradients
+        self.item_embeddings[unique_items] += learning_rate * item_gradients
 
         if self.include_biases:
             self.user_embeddings[:, -1] = 1
@@ -170,13 +170,12 @@ class LatentFactorsCollaborativeFiltering:
 
     def compute_gradients(self, interactions, reg_strength):
         users, items, ratings = self.split_interactions(interactions)
-        user_embeddings = self.user_embeddings[users]
-        item_embeddings = self.item_embeddings[items]
+
         predictions = self.predict_batch(users, items)
         errors = ratings - predictions
 
-        user_gradients = errors[:, np.newaxis] * item_embeddings[items, :]
-        item_gradients = errors[:, np.newaxis] * user_embeddings[users, :]
+        user_gradients = errors[:, np.newaxis] * self.user_embeddings[users]
+        item_gradients = errors[:, np.newaxis] * self.item_embeddings[items]
 
         unique_users, accumulated_user_gradients = self.accumulate_gradients(
             users, user_gradients
@@ -185,12 +184,8 @@ class LatentFactorsCollaborativeFiltering:
             items, item_gradients
         )
 
-        accumulated_user_gradients -= (
-            reg_strength * self.user_embeddings[unique_users, :]
-        )
-        accumulated_item_gradients -= (
-            reg_strength * self.item_embeddings[unique_items, :]
-        )
+        accumulated_user_gradients -= reg_strength * self.user_embeddings[unique_users]
+        accumulated_item_gradients -= reg_strength * self.item_embeddings[unique_items]
 
         return (
             errors,
