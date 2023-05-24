@@ -78,8 +78,13 @@ class LatentFactorsCollaborativeFiltering:
                 start_idx = batch_idx * batch_size
                 end_idx = start_idx + batch_size
                 batch_interactions = train_interactions[start_idx:end_idx]
-                errors = self.update_params(
-                    batch_interactions, learning_rate, reg_strength
+
+                errors = (
+                    self.update_params(batch_interactions, learning_rate)
+                    if not (reg_strength > 0)
+                    else self.update_reg_params(
+                        batch_interactions, learning_rate, reg_strength
+                    )
                 )
                 train_error += np.sum(errors**2)
 
@@ -129,16 +134,12 @@ class LatentFactorsCollaborativeFiltering:
         top_item_indices = np.argsort(scores)[::-1][:top_k]
         return top_item_indices
 
-    def update_params(self, interactions, learning_rate, reg_strength):
+    def update_params(self, interactions, learning_rate):
         users, items, ratings = self.split_interactions(interactions)
         errors = ratings - self.predict_batch(users, items)
 
         user_gradients = errors[:, np.newaxis] * self.item_embeddings[items, :]
         item_gradients = errors[:, np.newaxis] * self.user_embeddings[users, :]
-
-        if reg_strength > 0:
-            user_gradients -= reg_strength * self.user_embeddings[users, :]
-            item_gradients -= reg_strength * self.item_embeddings[items, :]
 
         np.add.at(self.user_embeddings, users, learning_rate * user_gradients)
         np.add.at(self.item_embeddings, items, learning_rate * item_gradients)
@@ -149,16 +150,15 @@ class LatentFactorsCollaborativeFiltering:
 
         return errors
 
-    def update_batch_params_and_gradients(
-        self, interactions, learning_rate, reg_strength
-    ):
+    def update_reg_params(self, interactions, learning_rate, reg_strength):
         (
             errors,
             unique_users,
             user_gradients,
             unique_items,
             item_gradients,
-        ) = self.compute_batch_gradients(interactions, reg_strength)
+        ) = self.compute_gradients(interactions, reg_strength)
+
         self.user_embeddings[unique_users, :] += learning_rate * user_gradients
         self.item_embeddings[unique_items, :] += learning_rate * item_gradients
 
@@ -168,35 +168,43 @@ class LatentFactorsCollaborativeFiltering:
 
         return errors
 
-    def compute_batch_gradients(self, interactions, reg_strength):
+    def compute_gradients(self, interactions, reg_strength):
         users, items, ratings = self.split_interactions(interactions)
-        user_embeddings = self.user_embeddings[users, :]
-        item_embeddings = self.item_embeddings[items, :]
+        user_embeddings = self.user_embeddings[users]
+        item_embeddings = self.item_embeddings[items]
         predictions = self.predict_batch(users, items)
         errors = ratings - predictions
 
-        user_gradients = errors[:, np.newaxis] * item_embeddings
-        item_gradients = errors[:, np.newaxis] * user_embeddings
+        user_gradients = errors[:, np.newaxis] * item_embeddings[items, :]
+        item_gradients = errors[:, np.newaxis] * user_embeddings[users, :]
 
-        if reg_strength > 0:
-            user_gradients -= reg_strength * self.user_embeddings[users, :]
-            item_gradients -= reg_strength * self.item_embeddings[items, :]
+        unique_users, accumulated_user_gradients = self.accumulate_gradients(
+            users, user_gradients
+        )
+        unique_items, accumulated_item_gradients = self.accumulate_gradients(
+            items, item_gradients
+        )
 
-        unique_users, user_indices = np.unique(users, return_inverse=True)
-        unique_items, item_indices = np.unique(items, return_inverse=True)
-
-        user_gradients_sum = np.zeros((len(unique_users), self.num_factors))
-        item_gradients_sum = np.zeros((len(unique_items), self.num_factors))
-        np.add.at(user_gradients_sum, user_indices, user_gradients)
-        np.add.at(item_gradients_sum, item_indices, item_gradients)
+        accumulated_user_gradients -= (
+            reg_strength * self.user_embeddings[unique_users, :]
+        )
+        accumulated_item_gradients -= (
+            reg_strength * self.item_embeddings[unique_items, :]
+        )
 
         return (
             errors,
             unique_users,
-            user_gradients_sum,
+            accumulated_user_gradients,
             unique_items,
-            item_gradients_sum,
+            accumulated_item_gradients,
         )
+
+    def accumulate_gradients(self, indices, gradients):
+        unique_indices, inverse = np.unique(indices, return_inverse=True)
+        accumulated_gradients = np.zeros((unique_indices.shape[0], self.num_factors))
+        np.add.at(accumulated_gradients, inverse, gradients)
+        return unique_indices, accumulated_gradients
 
     def evaluate_RMSE(self, test_interactions):
         test_users, test_items, test_ratings = np.split(test_interactions, 3, axis=1)
