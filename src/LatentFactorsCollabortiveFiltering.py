@@ -53,16 +53,20 @@ class LatentFactorsCollaborativeFiltering:
 
         self.initililize_embeddings()
 
-        train_errors = []
+        initial_train_RMSE = self.evaluate_RMSE(train_interactions)
+        train_errors = [initial_train_RMSE]
+
         validation_errors = []
+        if validation_interactions is not None:
+            initial_validation_RMSE = self.evaluate_RMSE(
+                validation_interactions, test=True
+            )
+            validation_errors.append(initial_validation_RMSE)
 
         pbar_outer = trange(epochs, desc="RMSE: None | Progress: ", leave=False)
 
         for epoch in pbar_outer:
             np.random.shuffle(train_interactions)
-
-            train_error = 0.0
-            validation_error = 0.0
 
             num_batches = (
                 int(np.ceil(len(train_interactions) / batch_size))
@@ -79,34 +83,27 @@ class LatentFactorsCollaborativeFiltering:
                 end_idx = start_idx + batch_size
                 batch_interactions = train_interactions[start_idx:end_idx]
 
-                errors = (
-                    self.update_params(batch_interactions, learning_rate)
-                    if not (reg_strength > 0)
-                    else self.update_reg_params(
+                if reg_strength > 0:
+                    self.update_reg_params(
                         batch_interactions, learning_rate, reg_strength
                     )
-                )
-                train_error += np.sum(errors**2)
+                else:
+                    self.update_params(batch_interactions, learning_rate)
 
                 if compute_detailed_errors:
-                    current_error = self.evaluate_RMSE(train_interactions)
-                    train_errors.append(current_error)
+                    train_RMSE = self.evaluate_RMSE(train_interactions)
+                    train_errors.append(train_RMSE)
 
             if not compute_detailed_errors:
-                train_errors.append(np.sqrt(train_error / len(train_interactions)))
+                train_RMSE = self.evaluate_RMSE(train_interactions)
+                train_errors.append(train_RMSE)
 
             if validation_interactions is not None:
-                validation_error = self.evaluate_RMSE(validation_interactions)
-                validation_errors.append(validation_error)
+                validation_RMSE = self.evaluate_RMSE(validation_interactions, test=True)
+                validation_errors.append(validation_RMSE)
 
             if tolerance is not None and epoch > 0:
-                absolute_improvement = train_errors[-2] - train_errors[-1]
-                if absolute_improvement < 0:
-                    pbar_outer.set_description(
-                        f"Early Stopping at Epoch {epoch+1} due to failure to improve RMSE | RMSE = {train_errors[-1]:.2e} | Progress"
-                    )
-                    break
-
+                absolute_improvement = np.abs(train_errors[-2] - train_errors[-1])
                 if absolute_improvement / train_errors[-2] < tolerance:
                     pbar_outer.set_description(
                         f"Early Stopping at Epoch {epoch+1} due to tolerance reached | RMSE = {train_errors[-1]:.2e}  | Progress"
@@ -118,12 +115,7 @@ class LatentFactorsCollaborativeFiltering:
         pbar_outer.close()
         return train_errors, validation_errors
 
-    def predict(self, user, item):
-        user_embedding = self.user_embeddings[user]
-        item_embedding = self.item_embeddings[item]
-        return np.dot(user_embedding, item_embedding)
-
-    def predict_batch(self, users, items):
+    def predict(self, users, items):
         user_embeddings_batch = self.user_embeddings[users]
         item_embeddings_batch = self.item_embeddings[items]
         return np.sum(user_embeddings_batch * item_embeddings_batch, axis=1)
@@ -135,8 +127,7 @@ class LatentFactorsCollaborativeFiltering:
         return top_item_indices
 
     def update_params(self, interactions, learning_rate):
-        users, items, ratings = self.split_interactions(interactions)
-        errors = ratings - self.predict_batch(users, items)
+        errors, users, items = self.evaluate_errors(interactions)
 
         user_gradients = errors[:, np.newaxis] * self.item_embeddings[items]
         item_gradients = errors[:, np.newaxis] * self.user_embeddings[users]
@@ -148,11 +139,8 @@ class LatentFactorsCollaborativeFiltering:
             self.user_embeddings[:, -1] = 1
             self.item_embeddings[:, -2] = 1
 
-        return errors
-
     def update_reg_params(self, interactions, learning_rate, reg_strength):
         (
-            errors,
             unique_users,
             user_gradients,
             unique_items,
@@ -166,13 +154,8 @@ class LatentFactorsCollaborativeFiltering:
             self.user_embeddings[:, -1] = 1
             self.item_embeddings[:, -2] = 1
 
-        return errors
-
     def compute_gradients(self, interactions, reg_strength):
-        users, items, ratings = self.split_interactions(interactions)
-
-        predictions = self.predict_batch(users, items)
-        errors = ratings - predictions
+        errors, users, items = self.evaluate_errors(interactions)
 
         user_gradients = errors[:, np.newaxis] * self.item_embeddings[items]
         item_gradients = errors[:, np.newaxis] * self.user_embeddings[users]
@@ -188,7 +171,6 @@ class LatentFactorsCollaborativeFiltering:
         accumulated_item_gradients -= reg_strength * self.item_embeddings[unique_items]
 
         return (
-            errors,
             unique_users,
             accumulated_user_gradients,
             unique_items,
@@ -201,17 +183,18 @@ class LatentFactorsCollaborativeFiltering:
         np.add.at(accumulated_gradients, inverse, gradients)
         return unique_indices, accumulated_gradients
 
-    def evaluate_RMSE(self, test_interactions):
-        test_users, test_items, test_ratings = np.split(test_interactions, 3, axis=1)
-        test_users = test_users.flatten().astype(int)
-        test_items = test_items.flatten().astype(int)
-        test_ratings = test_ratings.flatten()
-        test_predictions = self.predict_batch(test_users, test_items)
-        if self.standardize:
-            test_predictions = test_predictions * self.std_train + self.mean_train
-        errors = test_ratings - test_predictions
-        test_rmse = np.sqrt(np.mean(errors**2))
-        return test_rmse
+    def evaluate_errors(self, interactions, test=False):
+        users, items, ratings = self.split_interactions(interactions)
+        predictions = self.predict(users, items)
+        if test and self.standardize:
+            predictions = predictions * self.std_train + self.mean_train
+        errors = ratings - predictions
+        return errors, users, items
+
+    def evaluate_RMSE(self, interactions, test=False):
+        errors, _, _ = self.evaluate_errors(interactions, test=test)
+        rmse = np.sqrt(np.mean(errors**2))
+        return rmse
 
     def initililize_embeddings(self):
         self.num_factors = (
