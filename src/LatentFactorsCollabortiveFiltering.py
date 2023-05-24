@@ -174,8 +174,8 @@ class LatentFactorsCollaborativeFiltering:
         predictions = self.predict_batch(users, items)
         errors = ratings - predictions
 
-        user_gradients = errors[:, np.newaxis] * self.user_embeddings[users]
-        item_gradients = errors[:, np.newaxis] * self.item_embeddings[items]
+        user_gradients = errors[:, np.newaxis] * self.item_embeddings[items]
+        item_gradients = errors[:, np.newaxis] * self.user_embeddings[users]
 
         unique_users, accumulated_user_gradients = self.accumulate_gradients(
             users, user_gradients
