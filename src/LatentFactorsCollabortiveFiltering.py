@@ -23,6 +23,8 @@ class LatentFactorsCollaborativeFiltering:
         self.standardize = standardize
         self.mean_train = None
         self.std_train = None
+        self.user_ratings_counts = None
+        self.item_ratings_counts = None
 
     def fit(
         self,
@@ -39,6 +41,8 @@ class LatentFactorsCollaborativeFiltering:
     ):
         if num_factors is not None:
             self.num_factors = num_factors
+
+        # self.set_ratings_count_per_user_per_item(train_interactions)
 
         if self.standardize:
             train_interactions, mean_train, std_train = standardize_interactions(
@@ -63,7 +67,9 @@ class LatentFactorsCollaborativeFiltering:
             )
             validation_errors.append(initial_validation_RMSE)
 
-        pbar_outer = trange(epochs, desc="RMSE: None | Progress: ", leave=False)
+        pbar_outer = trange(
+            epochs, desc=f"RMSE: {initial_train_RMSE:.2e} | Progress: ", leave=False
+        )
 
         for epoch in pbar_outer:
             np.random.shuffle(train_interactions)
@@ -83,12 +89,7 @@ class LatentFactorsCollaborativeFiltering:
                 end_idx = start_idx + batch_size
                 batch_interactions = train_interactions[start_idx:end_idx]
 
-                if reg_strength > 0:
-                    self.update_reg_params(
-                        batch_interactions, learning_rate, reg_strength
-                    )
-                else:
-                    self.update_params(batch_interactions, learning_rate)
+                self.update_params(batch_interactions, learning_rate, reg_strength)
 
                 if compute_detailed_errors:
                     train_RMSE = self.evaluate_RMSE(train_interactions)
@@ -126,11 +127,37 @@ class LatentFactorsCollaborativeFiltering:
         top_item_indices = np.argsort(scores)[::-1][:top_k]
         return top_item_indices
 
-    def update_params(self, interactions, learning_rate):
+    def update_params(self, interactions, learning_rate, reg_strength):
         errors, users, items = self.evaluate_errors(interactions)
 
         user_gradients = errors[:, np.newaxis] * self.item_embeddings[items]
         item_gradients = errors[:, np.newaxis] * self.user_embeddings[users]
+
+        if reg_strength > 0:
+            (
+                interactions_ratings_count_per_user,
+                user_count_inverse,
+            ) = self.count_ratings_per_user(interactions)
+            (
+                interactions_ratings_count_per_item,
+                item_count_inverse,
+            ) = self.count_ratings_per_item(interactions)
+            user_reg_gradients = (
+                reg_strength
+                * self.user_embeddings[users]
+                / interactions_ratings_count_per_user[user_count_inverse][:, np.newaxis]
+            )
+            item_reg_gradients = (
+                reg_strength
+                * self.item_embeddings[items]
+                / interactions_ratings_count_per_item[item_count_inverse][:, np.newaxis]
+            )
+            if self.include_biases:
+                user_gradients[:, :-2] -= user_reg_gradients[:, :-2]
+                item_gradients[:, :-2] -= item_reg_gradients[:, :-2]
+            else:
+                user_gradients -= user_reg_gradients
+                item_gradients -= item_reg_gradients
 
         np.add.at(self.user_embeddings, users, learning_rate * user_gradients)
         np.add.at(self.item_embeddings, items, learning_rate * item_gradients)
@@ -146,7 +173,6 @@ class LatentFactorsCollaborativeFiltering:
             unique_items,
             item_gradients,
         ) = self.compute_gradients(interactions, reg_strength)
-
         self.user_embeddings[unique_users] += learning_rate * user_gradients
         self.item_embeddings[unique_items] += learning_rate * item_gradients
 
@@ -221,3 +247,21 @@ class LatentFactorsCollaborativeFiltering:
         items = items.flatten().astype(int)
         ratings = ratings.flatten()
         return users, items, ratings
+
+    def set_ratings_count_per_user_per_item(self, interactions):
+        user_ratings_counts, _ = self.count_ratings_per_user(interactions)
+        item_ratings_counts, _ = self.count_ratings_per_item(interactions)
+        self.user_ratings_counts = user_ratings_counts
+        self.item_ratings_counts = item_ratings_counts
+
+    def count_ratings_per_user(self, interactions):
+        _, inverse, user_ratings_counts = np.unique(
+            interactions[:, 0], return_counts=True, return_inverse=True
+        )
+        return user_ratings_counts, inverse
+
+    def count_ratings_per_item(self, interactions):
+        _, inverse, item_ratings_counts = np.unique(
+            interactions[:, 1], return_counts=True, return_inverse=True
+        )
+        return item_ratings_counts, inverse
