@@ -1,3 +1,6 @@
 __pycache__/
 .ipynb_checkpoints/
 .vscode/
+logs/
+.pytest_cache/
+datasets/preprocessed/
