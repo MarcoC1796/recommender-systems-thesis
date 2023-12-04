@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 from scipy.sparse import coo_matrix, diags
 import os
-from typing import Optional
+import json
+from typing import Optional, Tuple
 
 
 class DataPreprocessor:
@@ -41,7 +42,6 @@ class DataPreprocessor:
     def create_indices(self) -> None:
         """Creates continuous indices for user and item."""
         if self.data is not None:
-            # Create user and item indices starting from 1
             self.data["user_index"], _ = pd.factorize(self.data["user_id"], sort=True)
             self.data["item_index"], _ = pd.factorize(self.data["item_id"], sort=True)
 
@@ -56,56 +56,79 @@ class DataPreprocessor:
         self,
         directory: str,
         filename: str,
+        save_metadata: bool = True,
+        save_split_datasets: bool = False,
+        test_size: float = 0.2,
+        random_state: int = 42,
     ) -> None:
-        """Saves the preprocessed data to a specified directory."""
+        """
+        Saves the preprocessed data to a specified directory.
+        If save_split_datasets is True, it saves train and test datasets separately.
+        """
         if self.data is not None:
-            # Create the directory if it doesn't exist
             os.makedirs(directory, exist_ok=True)
-            save_path = os.path.join(directory, filename)
-            self.data.to_csv(save_path, index=False)
-            print(f"Preprocessed data saved to {save_path}")
+            if save_split_datasets:
+                train_df, test_df = self.split_data(
+                    test_size=test_size, random_state=random_state
+                )
+                train_df.to_csv(
+                    os.path.join(directory, f"{filename}_train.csv"), index=False
+                )
+                test_df.to_csv(
+                    os.path.join(directory, f"{filename}_test.csv"), index=False
+                )
+                print(f"Train and test datasets saved in {directory}")
+            else:
+                save_path = os.path.join(directory, f"{filename}.csv")
+                self.data.to_csv(save_path, index=False)
+                print(f"Preprocessed data saved to {save_path}")
+
+            if save_metadata:
+                metadata = self.calculate_metadata()
+                metadata_path = os.path.join(directory, f"{filename}_metadata.json")
+                with open(metadata_path, "w") as file:
+                    json.dump(metadata, file, indent=4)
+                print(f"Metadata saved to {metadata_path}")
+
         else:
             print("No data to save. Please run preprocess first.")
 
-    def create_adjacency_matrix(self) -> coo_matrix:
-        """Creates a symmetric adjacency matrix from the preprocessed data."""
-        if self.data is None:
+    def create_adjacency_matrix(self, subset_df: pd.DataFrame) -> coo_matrix:
+        """
+        Creates a symmetric adjacency matrix from the specified subset of data.
+        The matrix size is based on the total number of users and items in the whole dataset.
+        """
+        if self.data is None or self.num_users is None or self.num_items is None:
             raise ValueError(
-                "Data not loaded. Call preprocess() before creating adjacency matrix."
+                "Data not loaded or unique counts not calculated. Call preprocess() before creating adjacency matrix."
             )
 
-        user_indices = self.data["user_index"].values
-        item_indices = self.data["item_index"].values
-        num_users = user_indices.max() + 1
-        num_items = item_indices.max() + 1
+        if subset_df is None:
+            raise ValueError("Subset DataFrame is not provided.")
 
-        # Interaction matrix R (user-item interactions)
+        user_indices = subset_df["user_index"].values
+        item_indices = subset_df["item_index"].values
+
         interactions = np.ones(len(user_indices))
 
-        # Create the interaction part of the matrix (users-items interactions)
         interaction_part = coo_matrix(
-            (interactions, (user_indices, item_indices + num_users)),
-            shape=(num_users + num_items, num_users + num_items),
+            (interactions, (user_indices, item_indices + self.num_users)),
+            shape=(self.num_users + self.num_items, self.num_users + self.num_items),
         )
 
-        # The adjacency matrix is the sum of the interaction part and its transpose
         adjacency_matrix = interaction_part + interaction_part.T
 
         return adjacency_matrix.tocoo()
 
     def normalize_adjacency_matrix(self, adjacency_matrix: coo_matrix) -> coo_matrix:
         """Normalizes the adjacency matrix."""
-        # Sum the interactions for each user/item
         d = np.array(adjacency_matrix.sum(axis=1)).flatten()
 
-        # Inverse square root of the sum
         d_inv_sqrt = 1.0 / np.sqrt(d)
         d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
 
-        # Create the diagonal matrix for D^-1/2 using the inverse square root of the sum
         d_mat_inv_sqrt = diags(d_inv_sqrt)
 
-        # Compute the normalized adjacency matrix
         normalized_adjacency_matrix = d_mat_inv_sqrt.dot(adjacency_matrix).dot(
             d_mat_inv_sqrt
         )
@@ -128,10 +151,10 @@ class DataPreprocessor:
             num_chunks = (len(data) + chunk_size - 1) // chunk_size
             self.adjacency_matrix_num_chunks = num_chunks
 
-            for chunk_id in range(num_chunks):
-                start = chunk_id * chunk_size
+            for fold_id in range(num_chunks):
+                start = fold_id * chunk_size
                 end = min(start + chunk_size, len(data))
-                file_path = os.path.join(save_dir, f"adj_chunk_{chunk_id}.npz")
+                file_path = os.path.join(save_dir, f"adj_fold_{fold_id}.npz")
 
                 with open(file_path, "wb") as f:
                     np.savez_compressed(
@@ -142,9 +165,55 @@ class DataPreprocessor:
                         shape=adjacency_matrix.shape,
                     )
 
-            print(f"Saved chunk {chunk_id} of the normalized adjacency matrix.")
+            print(f"Saved chunk {fold_id} of the normalized adjacency matrix.")
         except OSError as e:
             print(f"An error occurred while saving the adjacency matrix: {e.strerror}")
+
+    def split_data(
+        self, test_size: float = 0.2, random_state=42
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        Splits the data into training and testing sets.
+        """
+        if self.data is None:
+            raise ValueError(
+                "Data not loaded. Call preprocess() before splitting data."
+            )
+
+        shuffled_data = self.data.sample(frac=1, random_state=random_state).reset_index(
+            drop=True
+        )
+
+        num_test = int(len(shuffled_data) * test_size)
+
+        test_df = shuffled_data[:num_test]
+        train_df = shuffled_data[num_test:]
+
+        return train_df, test_df
+
+    def calculate_metadata(self) -> dict:
+        """
+        Calculate and return metadata.
+        """
+        num_users = (
+            self.num_users
+            if self.num_users is not None
+            else self.data["user_id"].nunique()
+        )
+        num_items = (
+            self.num_items
+            if self.num_items is not None
+            else self.data["item_id"].nunique()
+        )
+        num_interactions = len(self.data)
+        dataset_density = num_interactions / (num_users * num_items)
+
+        return {
+            "num_users": num_users,
+            "num_items": num_items,
+            "num_interactions": num_interactions,
+            "dataset_density": dataset_density,
+        }
 
 
 if __name__ == "__main__":

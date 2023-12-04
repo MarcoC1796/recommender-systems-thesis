@@ -9,10 +9,9 @@ from scipy.sparse import coo_matrix
 class TestDataPreprocessor(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # This method will be run once before all tests
         cls.raw_data_path = os.path.join(
             "datasets", "raw", "movielens", "movielens_100k.csv"
-        )  # Path to a test CSV file
+        )
         cls.preprocessed_data_path = os.path.join(
             "datasets", "preprocessed", "movielens", "test_preprocessed_data.csv"
         )
@@ -27,8 +26,6 @@ class TestDataPreprocessor(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # This method will be run once after all tests
-        # Clean up the test CSV files
         if os.path.exists(cls.preprocessed_data_path):
             os.remove(cls.preprocessed_data_path)
 
@@ -43,7 +40,6 @@ class TestDataPreprocessor(unittest.TestCase):
         self.assertIsInstance(preprocessor.data, pd.DataFrame)
 
     def test_remove_duplicates(self):
-        # Test that duplicates are removed correctly
         preprocessor = DataPreprocessor(self.raw_data_path)
         preprocessor.load_data()
 
@@ -66,13 +62,11 @@ class TestDataPreprocessor(unittest.TestCase):
         )
 
     def test_create_indices(self):
-        # Test that user and item indices are created correctly
         preprocessor = DataPreprocessor(self.raw_data_path)
         preprocessor.load_data()
         preprocessor.remove_duplicates()
         preprocessor.create_indices()
 
-        # Check if the 'user_index' and 'item_index' columns have been created
         self.assertIn(
             "user_index", preprocessor.data.columns, "user_index column not created."
         )
@@ -80,7 +74,6 @@ class TestDataPreprocessor(unittest.TestCase):
             "item_index", preprocessor.data.columns, "item_index column not created."
         )
 
-        # Check if indices start from 1
         self.assertEqual(
             preprocessor.data["user_index"].min(),
             0,
@@ -92,7 +85,6 @@ class TestDataPreprocessor(unittest.TestCase):
             "item_index does not start from 0.",
         )
 
-        # Check if indices are continuous and match the count of unique users and items
         unique_users = preprocessor.data["user_id"].nunique()
         unique_items = preprocessor.data["item_id"].nunique()
         self.assertEqual(
@@ -107,12 +99,12 @@ class TestDataPreprocessor(unittest.TestCase):
         )
 
     def test_save_preprocessed_data(self):
-        # Test that preprocessed data is saved correctly
         preprocessor = DataPreprocessor(self.raw_data_path)
         preprocessor.preprocess()
         preprocessor.save_preprocessed_data(
             directory=os.path.join("datasets", "preprocessed", "movielens"),
-            filename="test_preprocessed_data.csv",
+            filename="test_preprocessed_data",
+            save_metadata=False,
         )
         self.assertTrue(os.path.exists(self.preprocessed_data_path))
 
@@ -139,7 +131,7 @@ class TestDataPreprocessor(unittest.TestCase):
         preprocessor = DataPreprocessor(self.dummy_csv_path)
         preprocessor.preprocess()
 
-        adjacency_matrix = preprocessor.create_adjacency_matrix()
+        adjacency_matrix = preprocessor.create_adjacency_matrix(preprocessor.data)
         dense_adjacency_matrix = adjacency_matrix.toarray()
 
         self.assertIsInstance(
@@ -172,12 +164,10 @@ class TestDataPreprocessor(unittest.TestCase):
         preprocessor = DataPreprocessor(self.dummy_csv_path)
         preprocessor.preprocess()
 
-        adjacency_matrix = preprocessor.create_adjacency_matrix()
+        adjacency_matrix = preprocessor.create_adjacency_matrix(preprocessor.data)
 
-        # Use the actual normalize_adjacency_matrix method
         normalized_matrix = preprocessor.normalize_adjacency_matrix(adjacency_matrix)
 
-        # Convert COO to dense format for comparison
         normalized_dense = normalized_matrix.toarray()
 
         self.assertIsInstance(
@@ -191,51 +181,104 @@ class TestDataPreprocessor(unittest.TestCase):
     def test_save_adjacency_matrix(self):
         preprocessor = DataPreprocessor(self.dummy_csv_path)
         preprocessor.preprocess()
-        adjacency_matrix = preprocessor.create_adjacency_matrix()
+        adjacency_matrix = preprocessor.create_adjacency_matrix(preprocessor.data)
 
-        # Define directory and filename for saving
         save_dir = "test_adjacency_matrix"
-        chunk_size = 2  # Define a small chunk size for testing
+        chunk_size = 2
 
-        # Run save_adjacency_matrix method
         preprocessor.save_adjacency_matrix(adjacency_matrix, save_dir, chunk_size)
 
-        # Check if the directory is created
         self.assertTrue(os.path.exists(save_dir), "The save directory does not exist.")
 
-        # Verify files are created and have correct data
-        num_chunks = (adjacency_matrix.nnz + chunk_size - 1) // chunk_size
-        for chunk_id in range(num_chunks):
-            file_path = os.path.join(save_dir, f"adj_chunk_{chunk_id}.npz")
+        num_folds = (adjacency_matrix.nnz + chunk_size - 1) // chunk_size
+        for fold_id in range(num_folds):
+            file_path = os.path.join(save_dir, f"adj_fold_{fold_id}.npz")
             self.assertTrue(
                 os.path.exists(file_path), f"Chunk file {file_path} does not exist."
             )
 
-            # Load the chunk and verify its contents
-            with np.load(file_path, mmap_mode=None) as chunk:
-                self.assertIn("row", chunk)
-                self.assertIn("col", chunk)
-                self.assertIn("data", chunk)
-                self.assertIn("shape", chunk)
+            with np.load(file_path, mmap_mode=None) as fold:
+                self.assertIn("row", fold)
+                self.assertIn("col", fold)
+                self.assertIn("data", fold)
+                self.assertIn("shape", fold)
 
-                # Verify that each chunk has the correct shape attribute
-                chunk_shape = tuple(chunk["shape"])
-                self.assertEqual(chunk_shape, adjacency_matrix.shape)
+                fold_shape = tuple(fold["shape"])
+                self.assertEqual(fold_shape, adjacency_matrix.shape)
 
-                # Check the data is correct (this is a simple check, for large matrices,
-                # you would want to check that the data corresponds to the correct slice of the matrix)
                 expected_data = adjacency_matrix.data[
-                    chunk_id * chunk_size : (chunk_id + 1) * chunk_size
+                    fold_id * chunk_size : (fold_id + 1) * chunk_size
                 ]
                 np.testing.assert_array_equal(
-                    chunk["data"], expected_data, "Data in saved chunk is incorrect."
+                    fold["data"], expected_data, "Data in saved chunk is incorrect."
                 )
 
-        # Clean up: remove the created directory and its files
-        for chunk_id in range(num_chunks):
-            file_path = os.path.join(save_dir, f"adj_chunk_{chunk_id}.npz")
+        for fold_id in range(num_folds):
+            file_path = os.path.join(save_dir, f"adj_fold_{fold_id}.npz")
             os.remove(file_path)
         os.rmdir(save_dir)
+
+    def test_split_data(self):
+        preprocessor = DataPreprocessor(self.raw_data_path)
+        preprocessor.preprocess()
+
+        train_df, test_df = preprocessor.split_data(test_size=0.2)
+
+        total_interactions = len(preprocessor.data)
+        self.assertEqual(
+            len(train_df) + len(test_df),
+            total_interactions,
+            "The total number of interactions in train and test sets does not match the original dataset.",
+        )
+
+        merged_df = pd.merge(train_df, test_df, on=["user_id", "item_id"], how="inner")
+        self.assertTrue(
+            merged_df.empty,
+            "There are overlapping interactions between train and test sets.",
+        )
+
+    def test_repeatable_results_with_fixed_seed(self):
+        preprocessor = DataPreprocessor(self.raw_data_path)
+        preprocessor.preprocess()
+
+        train_df1, test_df1 = preprocessor.split_data(test_size=0.2, random_state=42)
+        train_df2, test_df2 = preprocessor.split_data(test_size=0.2, random_state=42)
+
+        self.assertTrue(
+            train_df1.equals(train_df2) and test_df1.equals(test_df2),
+            "Splits with the same random seed are not identical.",
+        )
+
+    def test_calculate_metadata(self):
+        self.dummy_df.to_csv(self.dummy_csv_path, index=False)
+        preprocessor = DataPreprocessor(self.dummy_csv_path)
+        preprocessor.preprocess()
+
+        metadata = preprocessor.calculate_metadata()
+
+        expected_num_users = self.dummy_df["user_id"].nunique()
+        expected_num_items = self.dummy_df["item_id"].nunique()
+        expected_num_interactions = len(self.dummy_df)
+        expected_dataset_density = expected_num_interactions / (
+            expected_num_users * expected_num_items
+        )
+
+        self.assertEqual(
+            metadata["num_users"], expected_num_users, "Number of users is incorrect."
+        )
+        self.assertEqual(
+            metadata["num_items"], expected_num_items, "Number of items is incorrect."
+        )
+        self.assertEqual(
+            metadata["num_interactions"],
+            expected_num_interactions,
+            "Number of interactions is incorrect.",
+        )
+        self.assertAlmostEqual(
+            metadata["dataset_density"],
+            expected_dataset_density,
+            msg="Dataset density is incorrect.",
+        )
 
 
 # This allows the test script to be run from the command line
