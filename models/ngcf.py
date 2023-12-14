@@ -31,7 +31,7 @@ Dependencies:
 - os
 
 Example: 
-
+https://github.com/MarcoC1796/recommender-systems-thesis/blob/main/notebooks/ngcf_in_action.ipynb
 """
 
 import numpy as np
