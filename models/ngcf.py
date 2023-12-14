@@ -1,3 +1,39 @@
+"""
+Neural Graph Collaborative Filtering (NGCF) Model Implementation
+
+This file contains a modern implementation of the NGCF model using TensorFlow and Keras.
+NGCF, originally introduced in the paper "Neural Graph Collaborative Filtering" by Xiang Wang et al.,
+is a recommendation system approach based on graph neural networks. It leverages user-item interaction 
+data for predictive tasks, integrating user-item graph structure into the embedding learning process.
+
+Original Paper: "Neural Graph Collaborative Filtering" by Xiang Wang, Xiangnan He, Meng Wang, Fuli Feng, and Tat-Seng Chua (2019)
+Link to paper: https://arxiv.org/abs/1905.08108
+
+The implementation includes two main classes: 
+1. NGCFLayer - A custom TensorFlow layer representing a single layer in the NGCF architecture.
+2. NGCFModel - The complete NGCF model, incorporating multiple NGCFLayer instances for 
+   learning user-item interactions.
+
+Key Features:
+- Modern implementation using TensorFlow 2.x and Keras.
+- Utilizes sparse matrix operations for efficient handling of large, sparse user-item graphs.
+- Supports inclusion of self-interactions in the NGCFLayer to capture individual preferences.
+- Implements the propagation of embeddings through the graph structure for enhanced recommendations.
+
+Usage:
+This script is intended to be imported as a module in a larger recommendation system pipeline where
+user-item interaction data is available.
+
+Dependencies: 
+- numpy
+- tensorflow
+- keras
+- os
+
+Example: 
+
+"""
+
 import numpy as np
 import os
 import tensorflow as tf
@@ -6,9 +42,25 @@ from typing import Optional, Tuple
 
 
 class NGCFLayer(layers.Layer):
+    """
+    A custom layer for the NGCF model representing a single layer of the network.
+
+    Attributes:
+        embedding_size (int): The size of the embeddings used in the layer.
+        W1 (tf.Variable): Weight matrix for self-interaction in the layer.
+        W2 (tf.Variable): Weight matrix for the interaction between a node and its neighbors.
+    """
+
     def __init__(
         self, embedding_size: int, activation: Optional[callable] = None, **kwargs
     ):
+        """
+        Initialize the NGCFLayer.
+
+        Args:
+            embedding_size (int): The size of the embeddings.
+            activation (callable, optional): Activation function to use. Defaults to None.
+        """
         super(NGCFLayer, self).__init__(**kwargs)
         self.embedding_size: int = embedding_size
         self.W1 = self.add_weight(
@@ -28,34 +80,69 @@ class NGCFLayer(layers.Layer):
         adj_submatrix: tf.SparseTensor = None,
         include_self_messages: bool = False,
     ) -> tf.Tensor:
+        """
+        Forward pass for the NGCFLayer.
+
+        Args:
+            embeddings (tf.Tensor): The input embeddings.
+            adj_submatrix (tf.SparseTensor, optional): The adjacency submatrix for the graph.
+            include_self_messages (bool, optional): Flag to include self-interaction messages. Defaults to False.
+
+        Returns:
+            tf.Tensor: The output embeddings after the layer's transformations.
+        """
+
         include_self_messages = tf.constant(include_self_messages)
 
         def true_self_messages() -> tf.Tensor:
-            self_messages = tf.matmul(embeddings, self.W1)
+            # E@W1 term
+            self_interaction = tf.matmul(embeddings, self.W1)
 
-            relevant_embeddings = tf.sparse.sparse_dense_matmul(
+            # L@E term
+            neighbor_interaction = tf.sparse.sparse_dense_matmul(
                 adj_submatrix, embeddings
             )
 
-            non_interactive_messages = tf.matmul(relevant_embeddings, self.W1)
-            interactive_messages = tf.matmul(relevant_embeddings * embeddings, self.W2)
+            # L@E@W1 term
+            neighbor_messages = tf.matmul(neighbor_interaction, self.W1)
 
-            return self_messages + non_interactive_messages + interactive_messages
+            # L@E element-wise multiplied by E, then applying W2
+            elementwise_product = tf.matmul(neighbor_interaction * embeddings, self.W2)
+
+            return self_interaction + neighbor_messages + elementwise_product
 
         def false_self_messages() -> tf.Tensor:
-            relevant_embeddings = tf.sparse.sparse_dense_matmul(
+            # L@E term
+            neighbor_interaction = tf.sparse.sparse_dense_matmul(
                 adj_submatrix, embeddings
             )
 
-            non_interactive_messages = tf.matmul(relevant_embeddings, self.W1)
-            interactive_messages = tf.matmul(relevant_embeddings * embeddings, self.W2)
+            # L@E@W1 term
+            neighbor_messages = tf.matmul(neighbor_interaction, self.W1)
 
-            return non_interactive_messages + interactive_messages
+            # L@E element-wise multiplied by E, then apply W2
+            elementwise_product = tf.matmul(neighbor_interaction * embeddings, self.W2)
+
+            return neighbor_messages + elementwise_product
 
         return tf.cond(include_self_messages, true_self_messages, false_self_messages)
 
 
 class NGCFModel(Model):
+    """
+    The NGCF model, a graph-based neural network for collaborative filtering.
+
+    Attributes:
+        num_users (int): Number of users in the dataset.
+        num_items (int): Number of items in the dataset.
+        embedding_size (int): Size of the embeddings for users and items.
+        n_fold (int): Number of folds to split the adjacency matrix for parallel computation.
+        adj_save_dir (str): Directory where adjacency matrices are saved.
+        user_embeddings (keras.layers.Embedding): Embedding layer for users.
+        item_embeddings (keras.layers.Embedding): Embedding layer for items.
+        ngcf_layers (List[NGCFLayer]): List of NGCF layers in the model.
+    """
+
     def __init__(
         self,
         num_users: int,
@@ -89,6 +176,15 @@ class NGCFModel(Model):
         self.ngcf_layers = [NGCFLayer(embedding_size) for _ in range(num_layers)]
 
     def call(self, inputs) -> tf.Tensor:
+        """
+        Forward pass for the NGCFModel.
+
+        Args:
+            inputs (dict): Dictionary with user and item indices.
+
+        Returns:
+            tf.Tensor: The predicted user-item interaction scores.
+        """
         user_indices, item_indices = inputs["user_index"], inputs["item_index"]
 
         initial_u_embeddings = self.user_embeddings(user_indices)
@@ -115,6 +211,17 @@ class NGCFModel(Model):
     def compute_propagated_embeddings(
         self, user_indices: tf.Tensor, item_indices: tf.Tensor
     ) -> Tuple[tf.Tensor, tf.Tensor]:
+        """
+        Compute the propagated embeddings for users and items.
+
+        Args:
+            user_indices (tf.Tensor): Indices of users.
+            item_indices (tf.Tensor): Indices of items.
+
+        Returns:
+            Tuple[tf.Tensor, tf.Tensor]: Tuple of tensors for user and item embeddings.
+        """
+
         original_u_embeddings = self.user_embeddings.weights[0]
         original_i_embeddings = self.item_embeddings.weights[0]
 
@@ -159,6 +266,15 @@ class NGCFModel(Model):
         )
 
     def load_adjacency_submatrix(self, fold_idx: int) -> tf.SparseTensor:
+        """
+        Load a submatrix of the adjacency matrix from the saved files.
+
+        Args:
+            fold_idx (int): Index of the fold.
+
+        Returns:
+            tf.SparseTensor: The loaded adjacency submatrix.
+        """
         with np.load(
             os.path.join(self.adj_save_dir, f"adj_fold_{fold_idx}.npz")
         ) as loader:
@@ -170,68 +286,4 @@ class NGCFModel(Model):
 
 
 if __name__ == "__main__":
-    import os
-    from utils.datahandler import DataHandler
-
-    dummy_train = (
-        {
-            "user_index": tf.constant([0, 1, 3, 1, 3, 2], dtype=tf.int64),
-            "item_index": tf.constant([2, 3, 5, 0, 3, 2], dtype=tf.int64),
-        },
-        tf.constant([1, 4, 9, 6, 6, 7], dtype=tf.int64),
-    )
-
-    datahandler = DataHandler(
-        dataset_path=os.path.join(
-            "datasets", "preprocessed", "movielens", "p_movielens_100k.csv"
-        ),
-        test_split=0.2,
-    )
-
-    # After you call get_train_test_datasets
-    train_dataset, test_dataset = datahandler.get_train_test_datasets()
-
-    # Take a single batch from the train dataset and inspect its structure
-    for features, labels in train_dataset.take(1):
-        print("Features:", features)
-        print("Labels:", labels)
-        print(
-            "Shapes:",
-            {key: value.shape for key, value in features.items()},
-            labels.shape,
-        )
-
-    users, items = (943, 1664)
-
-    save_dir = os.path.join(
-        "datasets", "preprocessed", "movielens", "p_movielens_100k_norm_adj_mat"
-    )
-
-    model = NGCFModel(
-        num_users=users,
-        num_items=items,
-        num_layers=3,
-        embedding_size=32,
-        n_fold=1,
-        adj_save_dir=save_dir,
-    )
-
-    # Compile the model
-    model.compile(
-        optimizer="adam",  # Adjust the optimizer and learning rate as needed
-        loss="mean_squared_error",  # You can also use a custom loss function here
-        metrics=[
-            tf.keras.metrics.RootMeanSquaredError()
-        ],  # Add any additional metrics you want to track
-    )
-
-    result = model(dummy_train[0])
-
-    print("\nRESULT:", result, "\n")
-
-    history = model.fit(
-        train_dataset,
-        epochs=25,
-        steps_per_epoch=datahandler.train_steps_per_epoch,
-        verbose=1,
-    )
+    pass
